@@ -250,13 +250,14 @@ fn encode_ucs2_hex(text: &str) -> String {
 
 /// Generate ZTE-format SMS timestamp "YY;MM;DD;HH;MM;SS;+TZ".
 fn format_sms_time() -> String {
-    let mut t: i64 = 0;
+    #[allow(deprecated)] // `time_t` is deprecated in libc's musl types; it is 32-bit on armv7.
+    let mut t: libc::time_t = 0;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe {
         libc::time(&mut t);
         libc::localtime_r(&t, &mut tm);
     }
-    let tz_offset = tm.tm_gmtoff / 3600;
+    let tz_offset = tm.tm_gmtoff as i64 / 3600;
     let tz_sign = if tz_offset >= 0 { "+" } else { "" };
     format!(
         "{:02};{:02};{:02};{:02};{:02};{:02};{}{}",
