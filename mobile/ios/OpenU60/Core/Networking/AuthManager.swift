@@ -20,6 +20,9 @@ final class AuthManager {
 
     var isAuthenticated: Bool { state == .authenticated }
 
+    /// Known after the first login; nil until then (and after a failed probe), read as a U60.
+    var deviceKind: DeviceKind?
+
     /// How long a failed silent re-auth suppresses the next attempt. Without it an unreachable
     /// router turns every poll tick into another login request.
     private static let reauthCooldown: Duration = .seconds(10)
@@ -46,6 +49,7 @@ final class AuthManager {
         do {
             try await client.login(password: password)
             lastReauthFailure = nil
+            await detectDeviceKind()
             state = .authenticated
         } catch {
             state = error.isCancellation ? .idle : .failed(error.localizedDescription)
@@ -58,6 +62,7 @@ final class AuthManager {
         reauthTask = nil
         lastReauthFailure = nil
         client.token = nil
+        deviceKind = nil
         state = .idle
     }
 
@@ -90,6 +95,20 @@ final class AuthManager {
         return succeeded
     }
 
+    /// Asks the agent what it is before the tabs appear, so an Android hotspot never sees the
+    /// U60 screens. zte-agent answers 404 (an error envelope): that is a U60. A network failure
+    /// leaves the kind unknown, to be probed again on the next login.
+    private func detectDeviceKind() async {
+        do {
+            let caps = try await client.getJSON("/api/capabilities", retryOnUnauthorized: false)
+            deviceKind = DeviceKind.from(capabilities: caps)
+        } catch AgentError.serverError {
+            deviceKind = .u60
+        } catch {
+            deviceKind = nil
+        }
+    }
+
     private func performReauthentication() async -> Bool {
         guard let password = await KeychainHelper.loadInBackground(key: "router_password") else {
             lastReauthFailure = .now
@@ -98,6 +117,7 @@ final class AuthManager {
         do {
             try await client.login(password: password)
             lastReauthFailure = nil
+            if deviceKind == nil { await detectDeviceKind() }
             state = .authenticated
             return true
         } catch {
