@@ -65,8 +65,9 @@ scripts/setup-device.sh                        # adb: install, grants, dialer ro
 
 Or take a prebuilt APK from the `android-v*` GitHub releases: download all the release
 files into one directory and run `bash setup-device.sh` there. CI (`android-agent.yml`)
-builds, tests and lints every pull request that touches this directory, and pushing an
-`android-v1.2.3` tag publishes the release. Releases are signed with a fixed key from the
+builds, tests and lints every pull request that touches this directory. Every merge to
+`main` that touches it publishes the next patch release (`android-v0.1.1`, `0.1.2`, …); push
+an `android-vX.Y.0` tag by hand to bump the minor or major version. Releases are signed with a fixed key from the
 `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` secrets so
 each one installs over the last; local builds use the debug key, so uninstall first when
 switching between the two.
