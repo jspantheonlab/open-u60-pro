@@ -63,7 +63,11 @@ APAC/standard U30 Air only has embedded carrier SIMs.
 
 ## Testing without hardware
 
-The emulator's modem fakes SMS and calls, which covers everything except call audio:
+The emulator's modem fakes SMS and calls, which covers everything except call audio.
+`scripts/emulator-e2e.sh` runs 27 checks (SMS in/out, short codes, read/delete, incoming,
+answer, DTMF, mute, remote hang-up, outgoing, call waiting, reject, auth); it passes on
+Android 12 (API 31, as the U30 Air) and Android 15 (API 35, as the U30 Pro) images.
+By hand:
 
 ```sh
 adb emu sms send 10086 "Your code is 482913"
@@ -84,6 +88,18 @@ Unisoc T760/T780 audio HAL exposes both on these hotspots can only be checked on
 ```sh
 adb shell dumpsys media.audio_policy | grep -i -E "telephony|voice"
 ```
+
+`AudioProbe` answers exactly that. Run it during an active call, as shell:
+
+```sh
+adb shell CLASSPATH=$(adb shell pm path com.openu60.agent | cut -d: -f2) \
+    app_process /system/bin com.openu60.agent.probe.AudioProbe
+```
+
+It lists the audio devices, records 3 s from `VOICE_DOWNLINK` / `VOICE_UPLINK` /
+`VOICE_CALL` (reporting only the level, nothing is saved), plays a quiet beep to the
+Telephony Tx output (the other party should hear it), and prints a verdict. The emulator
+has the Telephony devices but its HAL refuses voice capture, so only hardware can answer.
 
 AirSIM is PolyForm Noncommercial; it is a design reference only and none of its code is
 copied here.

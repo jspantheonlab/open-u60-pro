@@ -35,7 +35,9 @@ for p in $perms; do sh_ pm grant "$PKG" "android.permission.$p"; done
 
 echo "taking the default dialer role (Telecom binds the agent's InCallService)"
 sh_ cmd role add-role-holder android.app.role.DIALER "$PKG" 0 >/dev/null
-holder=$(sh_ dumpsys role | grep -A1 'name=android.app.role.DIALER$' | sed -n 's/.*holders=//p')
+# `cmd role get-role-holders` exists from Android 13; Android 12 only has dumpsys.
+holder=$(sh_ cmd role get-role-holders android.app.role.DIALER 2>/dev/null | grep -v -i unknown || true)
+[ -n "$holder" ] || holder=$(sh_ dumpsys role | grep -A3 'name=android.app.role.DIALER$' | sed -n 's/.*holders=//p' | head -1)
 [ "$holder" = "$PKG" ] || echo "warning: default dialer is '$holder', not $PKG; call control will not work"
 
 echo "exempting it from battery optimisation"

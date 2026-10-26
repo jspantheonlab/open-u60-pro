@@ -19,7 +19,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Personal sideloaded build: sign with the debug key so `assembleRelease` installs.
             signingConfig = signingConfigs.getByName("debug")
         }
