@@ -1,18 +1,35 @@
 name: iOS app
 
 on:
-  # ios-v1.2.3 publishes an unsigned IPA; sideloading tools re-sign it with your Apple ID.
+  # A merge to main that touches the app publishes the next patch release (ios-v0.1.1, …) as an
+  # unsigned IPA; sideloading tools re-sign it with your Apple ID. Pushing an ios-vX.Y.Z tag by
+  # hand sets the version.
   push:
+    branches: [main]
     tags: ['ios-v*']
+    paths:
+      - '.github/workflows/ios.yml'
+      - '.github/scripts/release-version.sh'
+      - 'mobile/ios/**'
+      - 'scripts/test-ios-traffic.sh'
+      - 'scripts/test-router-esim.sh'
+      - 'scripts/test-sms-forward.sh'
+      - 'scripts/test-ios-hotspot.sh'
   pull_request:
     paths:
       - '.github/workflows/ios.yml'
+      - '.github/scripts/release-version.sh'
       - 'mobile/ios/**'
       - 'scripts/test-ios-traffic.sh'
       - 'scripts/test-router-esim.sh'
       - 'scripts/test-sms-forward.sh'
       - 'scripts/test-ios-hotspot.sh'
   workflow_dispatch:
+
+# Two merges in a row must not both claim the same next version.
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -44,12 +61,7 @@ jobs:
           sh scripts/test-ios-hotspot.sh
 
       - name: Version
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/ios-v* ]]; then
-            echo "VERSION_NAME=${GITHUB_REF#refs/tags/ios-v}" >> "$GITHUB_ENV"
-          else
-            echo "VERSION_NAME=0.0.0-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-          fi
+        run: .github/scripts/release-version.sh ios-v >> "$GITHUB_ENV"
 
       # No signing on CI: no certificates or profiles are stored in this repository.
       - name: Build for device (unsigned)
@@ -74,10 +86,14 @@ jobs:
           ls -l dist
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          # On main this also creates the tag, at the merged commit.
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           name: iOS app ${{ env.VERSION_NAME }}
+          generate_release_notes: true
           prerelease: true
           files: dist/*
           body: |
@@ -89,7 +105,7 @@ jobs:
             push updates are unavailable; a paid developer account keeps them.
 
       - name: Keep the build for review
-        if: "!startsWith(github.ref, 'refs/tags/')"
+        if: env.RELEASE_TAG == ''
         uses: actions/upload-artifact@v4
         with:
           name: OpenU60-${{ env.VERSION_NAME }}-unsigned
