@@ -75,11 +75,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Android agent ${{ env.VERSION_NAME }}
-          # Not yet verified on a real U30 Air / U30 Pro; drop this once it is.
+          # Not yet verified on a real U30 Air / U30 Pro / F50 Pro; drop this once it is.
           prerelease: true
           files: android-agent/dist/*
           body: |
-            Android agent for the ZTE U30 Air (Android 12) and U30 Pro (Android 15):
+            Android agent for the ZTE U30 Air (Android 12), U30 Pro and F50 Pro (Android 15):
             SMS and call control over the zte-agent API on port 9090. Call audio is not included yet.
 
             Download all files into one directory, then with the device on adb:

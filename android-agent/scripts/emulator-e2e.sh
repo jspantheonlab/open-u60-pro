@@ -29,13 +29,19 @@ hex() { python3 -c 'import sys; print(sys.argv[1].encode("utf-16-be").hex().uppe
 calls() { api /api/call/status; }
 focus() { "$ADB" shell dumpsys window | grep mCurrentFocus | tr -d '\r'; }
 
+echo "SIM"
+check "device lists the SIM in slot 0" "[x['slot'] for x in d['sims']]==[0]" "$(api /api/device)"
+check "send on an explicit SIM" "True" "$(api /api/sms/send "{\"number\":\"10086\",\"sim\":0,\"message_body\":\"$(hex "e2e sim0 $RANDOM")\"}")"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "localhost:$PORT_LOCAL/api/sms/send" -d '{"number":"10086","sim":1,"message_body":"0031"}')
+[ "$code" = 503 ] && { echo "  ok   empty slot 1 is refused"; pass=$((pass + 1)); } || { echo "  FAIL empty slot 1 gave $code"; fail=$((fail + 1)); }
+
 echo "SMS"
 marker="e2e-$RANDOM 验证码 $RANDOM"
 "$ADB" emu sms send 10690000 "$marker" >/dev/null
 sleep 4
 list=$(api /api/sms/list '{"page":0,"data_per_page":500}')
 check "received SMS is listed, unread, UCS-2" \
-  "any(bytes.fromhex(m['content']).decode('utf-16-be')=='''$marker''' and m['tag']=='1' and m['number']=='10690000' for m in d['messages'])" "$list"
+  "any(bytes.fromhex(m['content']).decode('utf-16-be')=='''$marker''' and m['tag']=='1' and m['number']=='10690000' and m.get('sim')==0 for m in d['messages'])" "$list"
 id=$(python3 -c "import json,sys; print(next(m['id'] for m in json.loads(sys.argv[1])['data']['messages'] if m['number']=='10690000'))" "$list")
 check "mark read" "True" "$(api /api/sms/read "{\"id\":\"$id;\",\"tag\":0}")"
 check "now read" "any(m['id']==$id and m['tag']=='0' for m in d['messages'])" "$(api /api/sms/list '{"page":0,"data_per_page":500}')"
@@ -72,7 +78,7 @@ else
 fi
 check "idle again" "d['calls']==[]" "$(calls)"
 check "dial" "True" "$(api /api/call/dial '{"number":"10086"}')"; sleep 1
-check "outgoing is listed as mo, alerting" "[(c['dir'],c['stat']) for c in d['calls']]==[('mo','alerting')]" "$(calls)"
+check "outgoing is listed as mo, alerting, on SIM 0" "[(c['dir'],c['stat'],c.get('sim')) for c in d['calls']]==[('mo','alerting',0)]" "$(calls)"
 sleep 3
 check "outgoing connects" "[c['stat'] for c in d['calls']]==['active']" "$(calls)"
 "$ADB" emu gsm call 13900139000 >/dev/null; sleep 3

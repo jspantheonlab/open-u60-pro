@@ -10,16 +10,20 @@ import org.junit.Test
 class ApiTest {
     private class FakeDevice : Api.Device {
         val sent = ArrayList<Pair<String, String>>()
+        val sims = ArrayList<Int?>()
         val hidden = ArrayList<Long>()
         var dialed: String? = null
         override fun info() = JSONObject().put("model", "fake")
         override fun smsList(page: Int, perPage: Int) = JSONObject().put("page", page).put("per", perPage)
         override fun smsCapacity() = JSONObject()
-        override fun smsSend(number: String, text: String) { sent += number to text }
+        override fun smsSend(number: String, text: String, sim: Int?): String? {
+            sent += number to text; sims += sim
+            return if (sim == 1) "no active SIM in slot 1" else null
+        }
         override fun smsMarkRead(ids: List<Long>) {}
         override fun smsHide(ids: List<Long>) { hidden += ids }
         override fun callStatus() = JSONObject().put("calls", org.json.JSONArray())
-        override fun callDial(number: String): String? { dialed = number; return null }
+        override fun callDial(number: String, sim: Int?): String? { dialed = number; sims += sim; return null }
         override fun callAnswer() = false
         override fun callHangup() = true
         override fun callDtmf(digits: String) = true
@@ -80,6 +84,19 @@ class ApiTest {
         assertEquals("+8613800138000" to "你好", device.sent.single())
         assertEquals(400, call("POST", "/api/sms/send", """{"number":"x","message_body":"4F60"}""", t).first)
         assertEquals(400, call("POST", "/api/sms/send", """{"number":"10086","message_body":"zz"}""", t).first)
+    }
+
+    @Test fun optionalSimSlot() {
+        val t = setup()
+        val body = """"number":"10086","message_body":"4F60""""
+        assertEquals(200, call("POST", "/api/sms/send", "{$body}", t).first)
+        assertEquals(200, call("POST", "/api/sms/send", "{$body,\"sim\":0}", t).first)
+        assertEquals(200, call("POST", "/api/sms/send", "{$body,\"sim\":\"0\"}", t).first)
+        assertEquals(503, call("POST", "/api/sms/send", "{$body,\"sim\":1}", t).first)
+        assertEquals(400, call("POST", "/api/sms/send", "{$body,\"sim\":9}", t).first)
+        assertEquals(400, call("POST", "/api/sms/send", "{$body,\"sim\":\"a\"}", t).first)
+        assertEquals(200, call("POST", "/api/call/dial", """{"number":"10086","sim":1}""", t).first)
+        assertEquals(listOf(null, 0, 0, 1, 1), device.sims)
     }
 
     @Test fun smsDeleteTakesZteIdList() {

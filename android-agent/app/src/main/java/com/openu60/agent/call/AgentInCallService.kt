@@ -3,6 +3,9 @@ package com.openu60.agent.call
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
+import android.util.Log
+import com.openu60.agent.sim.SimChoice
+import com.openu60.agent.sim.Sims
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -14,6 +17,7 @@ class AgentInCallService : InCallService() {
     override fun onCreate() {
         super.onCreate()
         CallControl.service = this
+        CallControl.sims = Sims(this)
     }
 
     override fun onDestroy() {
@@ -23,16 +27,24 @@ class AgentInCallService : InCallService() {
 
     override fun onCallAdded(call: Call) {
         CallControl.add(call)
+        call.registerCallback(selectSim)
+        CallControl.selectSimIfAsked(call)
     }
 
     override fun onCallRemoved(call: Call) {
+        call.unregisterCallback(selectSim)
         CallControl.remove(call)
+    }
+
+    private val selectSim = object : Call.Callback() {
+        override fun onStateChanged(call: Call, state: Int) = CallControl.selectSimIfAsked(call)
     }
 }
 
 /** The live calls Telecom gave the in-call service, and the actions on them. */
 object CallControl {
     @Volatile var service: AgentInCallService? = null
+    @Volatile var sims: Sims? = null
     private val calls = ArrayList<Call>()
     private val ids = HashMap<Call, Int>()
     private var nextId = 1
@@ -67,10 +79,28 @@ object CallControl {
                     .put("dir", CallStates.dir(call.details.callDirection))
                     .put("stat", stat)
                     .put("mode", 0)
-                    .put("number", call.details.handle?.schemeSpecificPart ?: ""),
+                    .put("number", call.details.handle?.schemeSpecificPart ?: "")
+                    .putOpt("sim", sims?.slotOfAccount(call.details.accountHandle)),
             )
         }
         return JSONObject().put("calls", out).put("muted", isMuted())
+    }
+
+    /**
+     * A call that reached Telecom without an account (dual SIM, "ask every time", dialled by
+     * something other than the API) waits for an on-screen choice this device cannot show.
+     * Answer it with the default voice SIM, or the lowest slot.
+     */
+    fun selectSimIfAsked(call: Call) {
+        if (call.details.state != CallStates.SELECT_PHONE_ACCOUNT) return
+        val s = sims ?: return
+        val handle = (s.forCall(null) as? SimChoice.Pick.Use)?.let { s.accountFor(it.sim) }
+        if (handle == null) {
+            Log.w("OpenU60Agent", "call needs a SIM choice but no SIM account is available; ending it")
+            call.disconnect()
+            return
+        }
+        call.phoneAccountSelected(handle, false)
     }
 
     private fun ringing(): Call? = snapshot().map { it.second }.firstOrNull {

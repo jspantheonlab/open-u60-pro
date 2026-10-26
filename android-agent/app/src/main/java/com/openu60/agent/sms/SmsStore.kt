@@ -3,6 +3,7 @@ package com.openu60.agent.sms
 import android.content.Context
 import android.provider.Telephony
 import android.telephony.SmsManager
+import com.openu60.agent.sim.Sims
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.TimeZone
@@ -14,13 +15,14 @@ import java.util.TimeZone
  * ZTE software could break its own SMS handling. So "read" and "delete" are kept in an
  * overlay of ids here, and the provider is never modified.
  */
-class SmsStore(private val context: Context) {
+class SmsStore(private val context: Context, private val sims: Sims) {
     private val overlay = context.getSharedPreferences("sms_overlay", Context.MODE_PRIVATE)
 
     fun list(page: Int, perPage: Int): JSONObject {
         val read = overlay.getStringSet(KEY_READ, emptySet())!!
         val hidden = overlay.getStringSet(KEY_HIDDEN, emptySet())!!
         val zone = TimeZone.getDefault()
+        val active = sims.active()
         val messages = JSONArray()
         val limit = perPage.coerceIn(1, MAX_PAGE)
         var skip = page.coerceAtLeast(0) * limit
@@ -29,7 +31,7 @@ class SmsStore(private val context: Context) {
             arrayOf(
                 Telephony.Sms._ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY,
                 Telephony.Sms.DATE, Telephony.Sms.TYPE, Telephony.Sms.READ,
-                Telephony.Sms.THREAD_ID,
+                Telephony.Sms.THREAD_ID, Telephony.Sms.SUBSCRIPTION_ID,
             ),
             null, null, "${Telephony.Sms._ID} DESC",
         )?.use { c ->
@@ -46,7 +48,9 @@ class SmsStore(private val context: Context) {
                         .put("date", ZteSmsFormat.formatDate(c.getLong(3), zone))
                         .put("tag", ZteSmsFormat.tagFor(c.getInt(4), isRead).toString())
                         .put("draft_group_id", c.getLong(6).toString())
-                        .put("mem_store", "nv"),
+                        .put("mem_store", "nv")
+                        // Dual-SIM devices: the slot it arrived on or was sent from (absent if unknown).
+                        .putOpt("sim", sims.slotOfSub(c.getInt(7), active)),
                 )
             }
         }
@@ -92,8 +96,10 @@ class SmsStore(private val context: Context) {
     }
 
     /** Sends [text]; the system records it in the provider's sent box for non-default apps. */
-    fun send(number: String, text: String) {
-        val sms = context.getSystemService(SmsManager::class.java)
+    fun send(number: String, text: String, subId: Int) {
+        // Always an explicit subscription: with "ask every time" the default manager would
+        // need an on-screen SIM choice.
+        val sms = context.getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
         val parts = sms.divideMessage(text)
         if (parts.size == 1) {
             sms.sendTextMessage(number, null, text, null, null)

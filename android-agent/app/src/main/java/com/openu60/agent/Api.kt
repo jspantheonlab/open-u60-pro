@@ -18,12 +18,13 @@ class Api(private val auth: Auth, private val device: Device) {
         fun info(): JSONObject
         fun smsList(page: Int, perPage: Int): JSONObject
         fun smsCapacity(): JSONObject
-        fun smsSend(number: String, text: String)
+        /** [sim] is the requested slot (null = the default SIM). Null on success, otherwise the reason. */
+        fun smsSend(number: String, text: String, sim: Int?): String?
         fun smsMarkRead(ids: List<Long>)
         fun smsHide(ids: List<Long>)
         fun callStatus(): JSONObject
-        /** Null on success, otherwise the reason. */
-        fun callDial(number: String): String?
+        /** [sim] is the requested slot (null = the default SIM). Null on success, otherwise the reason. */
+        fun callDial(number: String, sim: Int?): String?
         fun callAnswer(): Boolean
         fun callHangup(): Boolean
         fun callDtmf(digits: String): Boolean
@@ -115,8 +116,9 @@ class Api(private val auth: Auth, private val device: Device) {
         val text = ZteSmsFormat.decodeUcs2Hex(hex) ?: return bad("message_body must be UCS-2 hex")
         if (text.isEmpty()) return bad("empty message")
         if (text.length > MAX_SMS_CHARS) return bad("message too long")
-        device.smsSend(number, text)
-        return ok()
+        val sim = simSlot(body) ?: return bad("'sim' must be a slot number 0-7")
+        val err = device.smsSend(number, text, sim.slot)
+        return if (err == null) ok() else Response(503, Json.error(err))
     }
 
     private inline fun withIds(req: Request, action: (List<Long>) -> Unit): Response {
@@ -136,8 +138,23 @@ class Api(private val auth: Auth, private val device: Device) {
         val body = Json.body(req) ?: return bad("invalid JSON")
         val number = body.optString("number", "").trim()
         if (!isPhoneNumber(number)) return bad("invalid number")
-        val err = device.callDial(number)
+        val sim = simSlot(body) ?: return bad("'sim' must be a slot number 0-7")
+        val err = device.callDial(number, sim.slot)
         return if (err == null) ok() else Response(503, Json.error(err))
+    }
+
+    private class SimSlot(val slot: Int?)
+
+    /** The optional `sim` field: absent means the default SIM; null return means invalid. */
+    private fun simSlot(body: JSONObject): SimSlot? {
+        if (!body.has("sim")) return SimSlot(null)
+        val v = body.opt("sim")
+        val slot = when (v) {
+            is Int -> v
+            is String -> v.toIntOrNull()
+            else -> null
+        }
+        return if (slot != null && slot in 0..7) SimSlot(slot) else null
     }
 
     private fun callDtmf(req: Request): Response {
