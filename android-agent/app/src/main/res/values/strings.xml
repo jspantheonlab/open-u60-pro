@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenU60 Agent</string>
+    <string name="status_text">OpenU60 Agent is running.\nAPI on port %1$d.</string>
+</resources>

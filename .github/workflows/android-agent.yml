@@ -1,0 +1,97 @@
+name: Android agent
+
+on:
+  # android-v1.2.3 publishes a release; the zte-agent release uses plain v* tags.
+  push:
+    tags: ['android-v*']
+  pull_request:
+    paths:
+      - '.github/workflows/android-agent.yml'
+      - 'android-agent/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version from the tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/android-v* ]]; then
+            name="${GITHUB_REF#refs/tags/android-v}"
+          else
+            name="0.0.0-pr${{ github.event.number }}"
+          fi
+          echo "VERSION_NAME=$name" >> "$GITHUB_ENV"
+
+      # A fixed key lets each release install over the previous one. Releases must have it;
+      # pull requests fall back to a throwaway debug key when the secret is absent.
+      - name: Release key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            [[ "$GITHUB_REF" != refs/tags/* ]] || { echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing"; exit 1; }
+            echo "::warning::no release key; signing with a debug key"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Test and build
+        run: >
+          ./gradlew --no-daemon testDebugUnitTest lintRelease assembleRelease
+          -PversionName="$VERSION_NAME" -PversionCode="${{ github.run_number }}"
+
+      - name: Collect release files
+        run: |
+          mkdir dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/openu60-agent-$VERSION_NAME.apk"
+          cp scripts/setup-device.sh scripts/device/allow-short-code-sms.sh dist/
+          cp ../LICENSE dist/LICENSE-MIT.txt
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Android agent ${{ env.VERSION_NAME }}
+          # Not yet verified on a real U30 Air / U30 Pro / F50 Pro; drop this once it is.
+          prerelease: true
+          files: android-agent/dist/*
+          body: |
+            Android agent for the ZTE U30 Air (Android 12), U30 Pro and F50 Pro (Android 15):
+            SMS and call control over the zte-agent API on port 9090. Call audio is not included yet.
+
+            Download all files into one directory, then with the device on adb:
+
+                bash setup-device.sh
+
+            Tested on Android 12 and 15 emulators only. See android-agent/README.md.
+
+      - name: Keep the build for review
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: openu60-agent-${{ env.VERSION_NAME }}
+          path: android-agent/dist/*
+          retention-days: 7
