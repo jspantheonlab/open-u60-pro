@@ -10,8 +10,14 @@
 set -euo pipefail
 
 PKG=com.openu60.agent
-HERE="$(cd "$(dirname "$0")/.." && pwd)"
-APK="${1:-$HERE/app/build/outputs/apk/release/app-release.apk}"
+SELF="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(dirname "$SELF")"
+# Repo checkout: scripts/device/ and the Gradle output. Release download: everything side by side.
+POLICY_SH="$SELF/device/allow-short-code-sms.sh"
+[ -f "$POLICY_SH" ] || POLICY_SH="$SELF/allow-short-code-sms.sh"
+default_apk="$HERE/app/build/outputs/apk/release/app-release.apk"
+[ -f "$default_apk" ] || default_apk="$(ls "$SELF"/openu60-agent-*.apk 2>/dev/null | tail -1)"
+APK="${1:-$default_apk}"
 ADB="${ADB:-adb}"
 PORT_LOCAL="${PORT_LOCAL:-19090}"
 
@@ -53,7 +59,7 @@ elif "$ADB" root >/dev/null 2>&1 && sleep 2 && "$ADB" wait-for-device && [ "$(sh
 fi
 if [ -n "$root_sh" ]; then
   echo "allowing short-code SMS without a dialog (root)"
-  "$ADB" push "$HERE/scripts/device/allow-short-code-sms.sh" /data/local/tmp/ >/dev/null
+  "$ADB" push "$POLICY_SH" /data/local/tmp/allow-short-code-sms.sh >/dev/null
   sh_ "$root_sh 'sh /data/local/tmp/allow-short-code-sms.sh $PKG'"
   sh_ rm -f /data/local/tmp/allow-short-code-sms.sh
   REBOOT_NEEDED=1

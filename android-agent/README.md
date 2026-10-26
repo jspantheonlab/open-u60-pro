@@ -46,6 +46,14 @@ that role from the stock ZTE software could break its own SMS handling.
 scripts/setup-device.sh                        # adb: install, grants, dialer role, password
 ```
 
+Or take a prebuilt APK from the `android-v*` GitHub releases: download all the release
+files into one directory and run `bash setup-device.sh` there. CI (`android-agent.yml`)
+builds, tests and lints every pull request that touches this directory, and pushing an
+`android-v1.2.3` tag publishes the release. Releases are signed with a fixed key from the
+`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` secrets so
+each one installs over the last; local builds use the debug key, so uninstall first when
+switching between the two.
+
 `setup-device.sh` grants the runtime permissions, makes the agent the default dialer,
 whitelists it from Doze, and (with Magisk `su` or `adb root`) allows short-code SMS without
 a dialog; reboot once afterwards. Without root, answer **Always allow** on the device the
