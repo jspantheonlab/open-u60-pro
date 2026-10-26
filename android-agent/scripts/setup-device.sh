@@ -52,9 +52,11 @@ sh_ cmd appops set "$PKG" RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1 || true
 
 # Premium/short-code SMS: policy 3 = always allow, read by SmsUsageMonitor at boot.
 root_sh=""
-if [ "$(sh_ su -c id 2>/dev/null | grep -c 'uid=0')" -ge 1 ]; then
-  root_sh="su -c"
-elif "$ADB" root >/dev/null 2>&1 && sleep 2 && "$ADB" wait-for-device && [ "$(sh_ id -u)" = 0 ]; then
+# Magisk on the rooted U30 Pro / F50 Pro puts su in /debug_ramdisk, not on PATH.
+for su in su /debug_ramdisk/su; do
+  if [ "$(sh_ "$su" -c id 2>/dev/null | grep -c 'uid=0')" -ge 1 ]; then root_sh="$su -c"; break; fi
+done
+if [ -z "$root_sh" ] && "$ADB" root >/dev/null 2>&1 && sleep 2 && "$ADB" wait-for-device && [ "$(sh_ id -u)" = 0 ]; then
   root_sh="sh -c"
 fi
 if [ -n "$root_sh" ]; then

@@ -57,6 +57,13 @@ customization, and more.
 | **Bluetooth** | Qualcomm WCN7850 (BT 5.3+), UART transport — disabled (services stopped, module unloaded) |
 | **Clients** | Up to 64 (32 per radio) |
 
+## Other Hardware
+
+Cheaper Android-based ZTE hotspots (U30 Air / F50, F50 Pro, U30 Pro) run the
+[Android agent](android-agent/README.md) for SMS and call control from the same iOS app,
+and a Quectel EC20 box adds call audio on the iPhone. Which one to pick, and how to set
+each up: [docs/hardware](docs/hardware/README.md).
+
 ## What's Included
 
 ### On-Device Agent (`zte-agent`)
