@@ -28,19 +28,22 @@ struct SMSListView: View {
     var body: some View {
         NavigationStack {
             List {
-                Picker("Storage", selection: Binding(
-                    get: { viewModel.storageFilter },
-                    set: { newValue in
-                        viewModel.storageFilter = newValue
-                        Task { await viewModel.refresh() }
+                // android-agent has one store (the phone's provider); a SIM/Internal split means nothing there.
+                if authManager.deviceKind != .androidHotspot {
+                    Picker("Storage", selection: Binding(
+                        get: { viewModel.storageFilter },
+                        set: { newValue in
+                            viewModel.storageFilter = newValue
+                            Task { await viewModel.refresh() }
+                        }
+                    )) {
+                        ForEach(SMSStorageFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
                     }
-                )) {
-                    ForEach(SMSStorageFilter.allCases, id: \.self) { filter in
-                        Text(filter.rawValue).tag(filter)
-                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
-                .pickerStyle(.segmented)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
                 if let error = viewModel.error {
                     Section {

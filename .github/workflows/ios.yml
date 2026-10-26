@@ -11,6 +11,7 @@ on:
       - 'scripts/test-ios-traffic.sh'
       - 'scripts/test-router-esim.sh'
       - 'scripts/test-sms-forward.sh'
+      - 'scripts/test-ios-hotspot.sh'
   workflow_dispatch:
 
 permissions:
@@ -40,6 +41,7 @@ jobs:
           sh scripts/test-ios-traffic.sh
           sh scripts/test-router-esim.sh
           sh scripts/test-sms-forward.sh
+          sh scripts/test-ios-hotspot.sh
 
       - name: Version
         run: |
