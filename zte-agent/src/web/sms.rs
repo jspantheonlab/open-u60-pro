@@ -283,12 +283,13 @@ pub fn now_unix() -> i64 {
 /// The router's UTC offset in seconds at `now` (its local time zone).
 pub fn local_offset(now: i64) -> i64 {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    // `time_t` is i64 on the router (and deprecated in libc's musl types).
-    let t: i64 = now;
+    // `time_t` is deprecated in libc's musl types, and 32-bit on armv7.
+    #[allow(deprecated)]
+    let t = now as libc::time_t;
     if unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
         0
     } else {
-        tm.tm_gmtoff
+        tm.tm_gmtoff as i64
     }
 }
 
