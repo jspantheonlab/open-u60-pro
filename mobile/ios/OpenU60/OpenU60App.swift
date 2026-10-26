@@ -35,11 +35,14 @@ struct OpenU60App: App {
             rootView
                 .environment(signalActivity)
                 .task(id: authManager.isAuthenticated) {
-                    if authManager.isAuthenticated { await signalActivity.resume() }
+                    // The Live Activity polls U60 signal endpoints android-agent does not have.
+                    if authManager.isAuthenticated && authManager.deviceKind != .androidHotspot {
+                        await signalActivity.resume()
+                    }
                     else if signalActivity.activity != nil { await signalActivity.stop() }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active && authManager.isAuthenticated {
+                    if phase == .active && authManager.isAuthenticated && authManager.deviceKind != .androidHotspot {
                         Task { await signalActivity.resume() }
                     }
                 }
@@ -56,7 +59,9 @@ struct OpenU60App: App {
 
     @ViewBuilder
     private var rootView: some View {
-        if authManager.isAuthenticated {
+        if authManager.isAuthenticated && authManager.deviceKind == .androidHotspot {
+            HotspotTabView(client: client, authManager: authManager)
+        } else if authManager.isAuthenticated {
             TabBarView(client: client, authManager: authManager)
         } else if isAttemptingAutoLogin {
             VStack(spacing: 16) {

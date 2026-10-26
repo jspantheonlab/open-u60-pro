@@ -1,0 +1,97 @@
+name: iOS app
+
+on:
+  # ios-v1.2.3 publishes an unsigned IPA; sideloading tools re-sign it with your Apple ID.
+  push:
+    tags: ['ios-v*']
+  pull_request:
+    paths:
+      - '.github/workflows/ios.yml'
+      - 'mobile/ios/**'
+      - 'scripts/test-ios-traffic.sh'
+      - 'scripts/test-router-esim.sh'
+      - 'scripts/test-sms-forward.sh'
+      - 'scripts/test-ios-hotspot.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # project.yml targets the newest Xcode; runners carry several, the default is not always the newest.
+      - name: Select the newest Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Generate the Xcode project
+        working-directory: mobile/ios/OpenU60
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Model tests
+        run: |
+          sh scripts/test-ios-traffic.sh
+          sh scripts/test-router-esim.sh
+          sh scripts/test-sms-forward.sh
+          sh scripts/test-ios-hotspot.sh
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/ios-v* ]]; then
+            echo "VERSION_NAME=${GITHUB_REF#refs/tags/ios-v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION_NAME=0.0.0-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      # No signing on CI: no certificates or profiles are stored in this repository.
+      - name: Build for device (unsigned)
+        working-directory: mobile/ios/OpenU60
+        run: |
+          set -o pipefail
+          xcodebuild archive -project OpenU60.xcodeproj -scheme OpenU60 -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/OpenU60.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            MARKETING_VERSION="${VERSION_NAME%%-*}" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            | tee "$RUNNER_TEMP/build.log" | grep -E '(error|warning: unable|BUILD|ARCHIVE) ' || true
+          test -d "$RUNNER_TEMP/OpenU60.xcarchive/Products/Applications/OpenU60.app" \
+            || { tail -100 "$RUNNER_TEMP/build.log"; exit 1; }
+
+      - name: Package the IPA
+        run: |
+          mkdir -p dist "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/OpenU60.xcarchive/Products/Applications/OpenU60.app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/dist/OpenU60-$VERSION_NAME-unsigned.ipa" Payload)
+          cp LICENSE dist/LICENSE-MIT.txt
+          (cd dist && shasum -a 256 * > SHA256SUMS)
+          ls -l dist
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: iOS app ${{ env.VERSION_NAME }}
+          prerelease: true
+          files: dist/*
+          body: |
+            Unsigned build of the OpenU60 iOS app (iOS 17+), for the U60 Pro (zte-agent) and the
+            Android hotspots running android-agent (U30 Air, U30 Pro, F50 Pro).
+
+            Install by re-signing with your own Apple ID, e.g. Sideloadly or AltStore. With a free
+            Apple ID the app expires after 7 days and push notifications and Live Activity
+            push updates are unavailable; a paid developer account keeps them.
+
+      - name: Keep the build for review
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenU60-${{ env.VERSION_NAME }}-unsigned
+          path: dist/*
+          retention-days: 7
